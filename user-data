@@ -91,6 +91,22 @@ coreos:
         ExecStart=/bin/bash -c "/opt/bin/kubectl describe rc kube-ingress-controller --namespace=kube-system >/dev/null 2>&1 || \
           /opt/bin/kubectl create -f /etc/micro-kube/addons/kube-ingress-controller.yaml"
 
+    - name: kube-apiserver-svc.service
+      command: start
+      enable: true
+      content: |
+        [Unit]
+        Description=Kubernetes API Service
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+
+        [Service]
+        Type=oneshot
+        EnvironmentFile=/etc/environment
+        ExecStartPre=/bin/bash -c "/opt/bin/download-k8s-binary kubectl"
+        ExecStartPre=/opt/bin/wupiao 127.0.0.1:8080
+        ExecStart=/bin/bash -c "/opt/bin/kubectl describe service kube-apiserver-unsecure --namespace=kube-system >/dev/null 2>&1 || \
+          /opt/bin/kubectl create -f /etc/micro-kube/addons/kube-apiserver-svc.yaml"
+
     - name: kube-ui.service
       command: start
       enable: true
@@ -164,6 +180,8 @@ write_files:
       metadata:
         name: kube-apiserver
         namespace: kube-system
+        labels:
+          k8s-app: kube-apiserver
       spec:
         hostNetwork: true
         containers:
@@ -300,6 +318,23 @@ write_files:
             initialDelaySeconds: 15
             timeoutSeconds: 1
 
+  - path: /etc/micro-kube/addons/kube-apiserver-svc.yaml
+    permission: '0644'
+    content: |
+      apiVersion: v1
+      kind: Service
+      metadata:
+        name: kube-apiserver-unsecure
+        namespace: kube-system
+        labels:
+          k8s-app: kube-apiserver
+      spec:
+        selector:
+          k8s-app: kube-apiserver
+        ports:
+        - port: 80
+          targetPort: 8080
+
   - path: /etc/micro-kube/addons/kube-ingress-controller.yaml
     permission: '0644'
     content: |
@@ -374,6 +409,25 @@ write_files:
         ports:
         - port: 80
           targetPort: 8080
+      ---
+      apiVersion: extensions/v1beta1
+      kind: Ingress
+      metadata:
+        name: kube-ui-ingress
+        namespace: kube-system
+      spec:
+        rules:
+        - host: kube-ui.micro-kube.io
+          http:
+            paths:
+            - path: /api/
+              backend:
+                serviceName: kube-apiserver-unsecure
+                servicePort: 80
+            - path: /
+              backend:
+                serviceName: kube-ui
+                servicePort: 80
 
   - path: /etc/micro-kube/addons/kube-dns.yaml
     permission: '0644'
