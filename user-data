@@ -75,6 +75,22 @@ coreos:
         [Install]
         WantedBy=multi-user.target
 
+    - name: kube-ingress-controller.service
+      command: start
+      enable: true
+      content: |
+        [Unit]
+        Description=Kubernetes Ingress Controller Addon
+        Documentation=https://github.com/GoogleCloudPlatform/kubernetes
+
+        [Service]
+        Type=oneshot
+        EnvironmentFile=/etc/environment
+        ExecStartPre=/bin/bash -c "/opt/bin/download-k8s-binary kubectl"
+        ExecStartPre=/opt/bin/wupiao 127.0.0.1:8080
+        ExecStart=/bin/bash -c "/opt/bin/kubectl describe rc kube-ingress-controller --namespace=kube-system >/dev/null 2>&1 || \
+          /opt/bin/kubectl create -f /etc/micro-kube/addons/kube-ingress-controller.yaml"
+
     - name: kube-ui.service
       command: start
       enable: true
@@ -286,22 +302,30 @@ write_files:
             initialDelaySeconds: 15
             timeoutSeconds: 1
 
-  - path: /etc/micro-kube/system/micro-kube-router.yaml
+  - path: /etc/micro-kube/addons/kube-ingress-controller.yaml
     permission: '0644'
     content: |
       apiVersion: v1
-      kind: Pod
+      kind: ReplicationController
       metadata:
-        name: micro-kube-router
+        name: kube-ingress-controller
         namespace: kube-system
       spec:
-        containers:
-        - name: micro-kube-router
-          image: krancour/micro-kube-router:latest
-          ports:
-          - containerPort: 80
-            hostPort: 80
-            name: http
+        replicas: 1
+        selector:
+          k8s-app: kube-ingress-controller
+        template:
+          metadata:
+            labels:
+              k8s-app: kube-ingress-controller
+          spec:
+            containers:
+            - image: krancour/k8s-nginx-ingress:0.0
+              name: kube-ingress-controller
+              ports:
+              - containerPort: 80
+                hostPort: 80
+                name: http
 
   - path: /etc/micro-kube/addons/kube-ui-rc.yaml
     permission: '0644'
